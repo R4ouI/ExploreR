@@ -52,7 +52,7 @@ const handleSubmit = async () => {
 
       <p v-if="error" class="error">{{ error }}</p>
 
-      <button @click="router.push('/home')" :disabled="loading">
+      <button @click="router.push('/')" :disabled="loading">
         {{ loading ? "Logging in..." : "Login" }}
       </button>
     </form>
