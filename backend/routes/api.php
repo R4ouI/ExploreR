@@ -2,16 +2,20 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
 
 Route::get('/generate-route', function () {
+
 
     // Punct de start - Romania (n viitor inlocuim cu locatia userului)
     $startLat = 45.9432;
     $startLng = 24.9668;
 
     // Generam 3-5 puncte random
+
+
     $points = [];
-    $numPoints = rand(3, 6);    
+    $numPoints = rand(3, 6);
 
     for ($i = 0; $i < $numPoints; $i++) {
         $points[] = [
@@ -22,6 +26,9 @@ Route::get('/generate-route', function () {
 
     return response()->json([
         'start' => ['lat' => $startLat, 'lng' => $startLng],
-        'route' => $points,
+        'route'  => $points,
     ]);
 });
+
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);

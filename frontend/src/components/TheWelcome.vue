@@ -1,16 +1,38 @@
 <script setup>
+import { computed } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
 
+// read login state from localStorage
+const user = computed(() => {
+  const stored = localStorage.getItem("authUser");
+  return stored ? JSON.parse(stored) : null;
+});
+
 const goToMap = () => router.push("/map");
 const goToLogin = () => router.push("/login");
+
+const logout = () => {
+  localStorage.removeItem("authToken");
+  localStorage.removeItem("authUser");
+  router.push("/login");
+};
 </script>
 
 <template>
   <div class="home-container">
-    <!-- Top-right Login -->
-    <button class="login-btn" @click="goToLogin">Login</button>
+    <!-- Top-right Login / User state -->
+    <div class="top-right">
+      <template v-if="user">
+        <span class="username">Hello, {{ user.name }}</span>
+        <button class="logout-btn" @click="logout">Logout</button>
+      </template>
+
+      <template v-else>
+        <button class="login-btn" @click="goToLogin">Login</button>
+      </template>
+    </div>
 
     <!-- Center Big Button -->
     <div class="center-content">
@@ -28,23 +50,38 @@ const goToLogin = () => router.push("/login");
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #111;
-  color: white;
   font-family: sans-serif;
+  color: white;
+
+  /* Background image */
+  background-image: url("/src/assets/backgroundimg.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  /* Dark overlay for low opacity effect */
+  background-color: rgba(0, 0, 0, 0.6);
+  background-blend-mode: darken;
 }
 
-html, body, #app {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-}
 
-/* Login button top-right */
-.login-btn {
+/* Top-right user/login area */
+.top-right {
   position: absolute;
   top: 20px;
   right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.username {
+  font-size: 1rem;
+  opacity: 0.9;
+}
+
+/* Login button */
+.login-btn {
   background: transparent;
   border: 1px solid white;
   padding: 8px 16px;
@@ -57,6 +94,21 @@ html, body, #app {
 .login-btn:hover {
   background: white;
   color: black;
+}
+
+/* Logout button */
+.logout-btn {
+  background: #ff4444;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.logout-btn:hover {
+  background: #cc0000;
 }
 
 /* Center section */
