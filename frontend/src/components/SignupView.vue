@@ -5,23 +5,33 @@ import api from "../api";
 
 const router = useRouter();
 
+const name = ref("");
 const email = ref("");
 const password = ref("");
+const passwordConfirm = ref("");
 const loading = ref(false);
 const error = ref("");
 
 const handleSubmit = async () => {
   error.value = "";
+
+  if (password.value !== passwordConfirm.value) {
+    error.value = "Parolele nu coincid.";
+    return;
+  }
+
   loading.value = true;
 
   try {
-    console.log("Sending login request...", email.value.trim());
-    const response = await api.post("/login", {
+    console.log("Sending register request...", email.value.trim());
+
+    const response = await api.post("/register", {
+      name: name.value.trim(),
       email: email.value.trim(),
       password: password.value,
     });
 
-    console.log("LOGIN OK:", response.data);
+    console.log("REGISTER OK:", response.data);
 
     localStorage.setItem("authToken", response.data.token);
     localStorage.setItem("authUser", JSON.stringify(response.data.user));
@@ -29,27 +39,33 @@ const handleSubmit = async () => {
     router.push("/");
   } catch (err) {
     console.log(
-      "LOGIN ERROR:",
+      "REGISTER ERROR:",
       err.response?.status,
       err.response?.data || err.message
     );
-    error.value = "Email sau parola gresite.";
+    error.value =
+      err.response?.data?.message || "Nu s-a putut crea contul.";
   } finally {
     loading.value = false;
   }
 };
 
-const goToSignup = () => {
-  router.push("/signup"); // make sure you have a /signup route
+const goToLogin = () => {
+  router.push("/login");
 };
 </script>
 
 <template>
-  <div class="login-page">
-    <div class="login-card">
-      <h1>Login</h1>
+  <div class="signup-page">
+    <div class="signup-card">
+      <h1>Sign up</h1>
 
-      <form class="login-form" @submit.prevent="handleSubmit">
+      <form class="signup-form" @submit.prevent="handleSubmit">
+        <label>
+          Nume
+          <input v-model="name" type="text" required />
+        </label>
+
         <label>
           Email
           <input v-model="email" type="email" required />
@@ -60,22 +76,22 @@ const goToSignup = () => {
           <input v-model="password" type="password" required />
         </label>
 
+        <label>
+          Confirma parola
+          <input v-model="passwordConfirm" type="password" required />
+        </label>
+
         <p v-if="error" class="error">{{ error }}</p>
 
         <button type="submit" :disabled="loading">
-          {{ loading ? "Se conecteaza..." : "Login" }}
+          {{ loading ? "Se creeaza contul..." : "Creeaza cont" }}
         </button>
       </form>
 
-      <p class="hint">
-        Test user: <b>test@example.com</b><br />
-        Parola: <b>password123</b>
-      </p>
-
-      <div class="signup-section">
-        <span>Nu ai cont?</span>
-        <button class="signup-btn" @click="goToSignup">
-          Creeaza un cont
+      <div class="login-section">
+        <span>Ai deja cont?</span>
+        <button class="login-btn" @click="goToLogin">
+          Intra in cont
         </button>
       </div>
     </div>
@@ -83,7 +99,7 @@ const goToSignup = () => {
 </template>
 
 <style scoped>
-.login-page {
+.signup-page {
   height: 100vh;
   width: 100vw;
   display: flex;
@@ -95,21 +111,21 @@ const goToSignup = () => {
     sans-serif;
 }
 
-.login-card {
+.signup-card {
   background: #181818;
   padding: 2rem 2.5rem;
   border-radius: 1rem;
   border: 1px solid #333;
-  min-width: 320px;
+  min-width: 340px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
 }
 
-.login-card h1 {
+.signup-card h1 {
   margin-bottom: 1.5rem;
   text-align: center;
 }
 
-.login-form {
+.signup-form {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -157,14 +173,7 @@ button:disabled {
   font-size: 0.85rem;
 }
 
-.hint {
-  margin-top: 1rem;
-  font-size: 0.8rem;
-  color: #aaa;
-}
-
-/* Signup section */
-.signup-section {
+.login-section {
   margin-top: 1.25rem;
   display: flex;
   align-items: center;
@@ -173,7 +182,7 @@ button:disabled {
   font-size: 0.9rem;
 }
 
-.signup-btn {
+.login-btn {
   padding: 0.4rem 0.9rem;
   border-radius: 0.6rem;
   border: 1px solid #00aaff;
@@ -183,7 +192,7 @@ button:disabled {
   transition: 0.15s ease;
 }
 
-.signup-btn:hover {
+.login-btn:hover {
   background: #00aaff;
   color: #fff;
 }
