@@ -5,11 +5,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/generate-route', function () {
 
-    // Punct de start - România (în viitor înlocuim cu locația userului)
+    // Punct de start - Romania (n viitor inlocuim cu locatia userului)
     $startLat = 45.9432;
     $startLng = 24.9668;
 
-    // Generăm 3-5 puncte random
+    // Generam 3-5 puncte random
     $points = [];
     $numPoints = rand(3, 6);    
 

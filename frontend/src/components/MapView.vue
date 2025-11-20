@@ -3,7 +3,7 @@
     <button 
       @click="generateRouteFromBackend"
       class="generate-btn">
-      Generează traseu
+      Genereaza traseu
     </button>
 
     <div id="map"></div>
@@ -33,7 +33,7 @@ setTimeout(() => {
 
   L.marker([45.9432, 24.9668])
     .addTo(map)
-    .bindPopup("ExploreR — punct de pornire 🏍️");
+    .bindPopup("ExploreR — punct de pornire");
 });
 
 
