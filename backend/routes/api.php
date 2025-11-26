@@ -4,29 +4,43 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 
-Route::get('/generate-route', function () {
 
+Route::get('/generate-random-route', function (Request $request) {
+    $start = explode(',', $request->query('start')); 
+    $startLat = floatval($start[0]);
+    $startLng = floatval($start[1]);
 
-    // Punct de start - Romania (n viitor inlocuim cu locatia userului)
-    $startLat = 45.9432;
-    $startLng = 24.9668;
-
-    // Generam 3-5 puncte random
-
-
-    $points = [];
-    $numPoints = rand(3, 6);
-
-    for ($i = 0; $i < $numPoints; $i++) {
-        $points[] = [
-            'lat' => $startLat + (rand(-100, 100) / 100),
-            'lng' => $startLng + (rand(-100, 100) / 100),
-        ];
-    }
+    //verificare cu pct de start si 2 random
+     $points = [
+        ['lat' => $startLat, 'lng' => $startLng],
+        ['lat' => $startLat + (rand(-10, 10) / 100), 'lng' => $startLng + (rand(-10, 10) / 100)],
+        ['lat' => $startLat + (rand(-10, 10) / 100), 'lng' => $startLng + (rand(-10, 10) / 100)],
+    ];
 
     return response()->json([
         'start' => ['lat' => $startLat, 'lng' => $startLng],
-        'route'  => $points,
+        'route' => $points,
+    ]);
+});
+
+Route::get('/generate-custom-route', function (Request $request) {
+    $start = explode(',', $request->query('start'));
+    $end = explode(',', $request->query('end'));
+
+    $startLat = floatval($start[0]);
+    $startLng = floatval($start[1]);
+    $endLat = floatval($end[0]);
+    $endLng = floatval($end[1]);
+
+    $points = [
+        ['lat' => $startLat, 'lng' => $startLng],
+        ['lat' => $endLat, 'lng' => $endLng],
+    ];
+
+    return response()->json([
+        'start' => ['lat' => $startLat, 'lng' => $startLng],
+        'end' => ['lat' => $endLat, 'lng' => $endLng],
+        'route' => $points,
     ]);
 });
 

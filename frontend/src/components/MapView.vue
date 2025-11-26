@@ -99,11 +99,8 @@ const generateRandomRouteFromBackend = async () => {
 
 const generateCustomRouteFromBackend = async () => {
   try {
-    const coords = [
-    [45.9432, 24.9668], // start
-    [45.945, 24.968],   // punct intermediar
-    [45.95, 24.97]      // end
-    ];
+    const response = await api.get("/generate-custom-route", { params: custom.value });
+    const coords = response.data.route.map(p => [p.lat, p.lng]);
     if (currentPolyline) map.removeLayer(currentPolyline);
     currentPolyline = L.polyline(coords, { color: "green" }).addTo(map);
     map.fitBounds(currentPolyline.getBounds());
