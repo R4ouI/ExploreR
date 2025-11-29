@@ -86,8 +86,15 @@ onMounted(() => {
 
 const generateRandomRouteFromBackend = async () => {
   try {
-    const response = await api.get("/generate-random-route", { params: random.value });
-    const coords = response.data.route.map(p => [p.lat, p.lng]);
+    const response = await api.get("/generate-random-route", {
+      params: {
+        start: random.value.start,      
+        length: random.value.length,
+        terrain: random.value.terrain,
+        loop: random.value.loop
+      }
+    });
+    const coords = response.data.route.map(p => [p[1], p[0]]); // inversăm pentru Leaflet
     if (currentPolyline) map.removeLayer(currentPolyline);
     currentPolyline = L.polyline(coords, { color: "blue" }).addTo(map);
     map.fitBounds(currentPolyline.getBounds());
@@ -99,7 +106,12 @@ const generateRandomRouteFromBackend = async () => {
 
 const generateCustomRouteFromBackend = async () => {
   try {
-    const response = await api.get("/generate-custom-route", { params: custom.value });
+    const response = await api.get("/generate-custom-route", {
+      params: {
+        start: custom.value.start, 
+        end: custom.value.end      
+      }
+    });
     const coords = response.data.route.map(p => [p.lat, p.lng]);
     if (currentPolyline) map.removeLayer(currentPolyline);
     currentPolyline = L.polyline(coords, { color: "green" }).addTo(map);
