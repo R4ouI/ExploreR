@@ -94,16 +94,28 @@ const generateRandomRouteFromBackend = async () => {
         loop: random.value.loop
       }
     });
-    const coords = response.data.route.map(p => [p[1], p[0]]); // inversăm pentru Leaflet
+
+    const route = response.data.route;
+
+    if (!route || !route.length) {
+      console.error("Ruta random este goală sau invalidă", route);
+      alert("Ruta Random generată este goală!");
+      return;
+    }
+
+    // Inversăm lng, lat -> lat, lng pentru Leaflet
+    const coords = route.map(p => [p[1], p[0]]);
+
     if (currentPolyline) map.removeLayer(currentPolyline);
+
     currentPolyline = L.polyline(coords, { color: "blue" }).addTo(map);
     map.fitBounds(currentPolyline.getBounds());
+
   } catch (err) {
     console.error(err);
     alert("Eroare la generarea traseului Random!");
   }
 };
-
 const generateCustomRouteFromBackend = async () => {
   try {
     const response = await api.get("/generate-custom-route", {
@@ -112,7 +124,16 @@ const generateCustomRouteFromBackend = async () => {
         end: custom.value.end      
       }
     });
-    const coords = response.data.route.map(p => [p.lat, p.lng]);
+
+    const route = response.data.route;
+
+    if (!route || !route.length) {
+      console.error("Ruta este goală sau invalidă", route);
+      alert("Ruta generată este goală!");
+      return;
+    }
+    // Inversăm lng, lat -> lat, lng
+    const coords = route.map(p => [p[1], p[0]]);
     if (currentPolyline) map.removeLayer(currentPolyline);
     currentPolyline = L.polyline(coords, { color: "green" }).addTo(map);
     map.fitBounds(currentPolyline.getBounds());

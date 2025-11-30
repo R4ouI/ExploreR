@@ -5,36 +5,47 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use GuzzleHttp\Client;
 
+
+
 Route::get('/generate-random-route', function (Request $request) {
-    $start = explode(',', $request->query('start')); 
-    $startLng = floatval($start[0]);//longitudine
-    $startLat = floatval($start[1]);//latitudine
 
-    $client = new Client([
-    'verify' => false 
+    $start = explode(',', $request->query('start'));
+    if(count($start) !== 2){
+        return response()->json(['error' => 'Invalid start coordinates'], 400);
+    }
+
+    $startLng = floatval($start[0]);
+    $startLat = floatval($start[1]);
+    $endLng = $startLng + (rand(-10, 10) / 100);
+    $endLat = $startLat + (rand(-10, 10) / 100);
+
+    $apiKey = env('ORS_API_KEY');
+
+    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HEADER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Accept: application/geo+json;charset=UTF-8"
     ]);
-    $url = 'https://api.openrouteservice.org/v2/directions/driving-car';
 
-    $endLat = $startLat + (rand(-10, 10)/100);
-    $endLng = $startLng + (rand(-10, 10)/100);
-
-    $response = $client->get($url, [
-        'query' => [
-            'start' => $startLng.','.$startLat, 
-            'end'   => $endLng.','.$endLat,
-        ],
-        'headers' => [
-            'Authorization' => env('ORS_API_KEY'),
-        ]
-    ]);
-
-    $data = json_decode($response->getBody(), true);
-    $route = $data['features'][0]['geometry']['coordinates']; 
-
+    $response = curl_exec($ch);
+    if($response === false){//daca avem erori
+        $error = curl_error($ch);
+        curl_close($ch);
+        return response()->json(['error' => $error]);
+    }
+    curl_close($ch);
+    $data = json_decode($response, true);//contine tot raspunsul
+    $route = $data['features'][0]['geometry']['coordinates'] ?? [];//ia da lista de coordonate din data
     return response()->json([
         'start' => [$startLng, $startLat],
-        'route' => $route,
-    ]);
+        'end'   => [$endLng, $endLat],
+        'route' => $route
+    ], 200, [], JSON_PRETTY_PRINT);
 });
 
 
@@ -42,7 +53,7 @@ Route::get('/generate-random-route', function (Request $request) {
 
 
 
-Route::get('/generate-custom-route', function (Request $request) {//ORS
+Route::get('/generate-custom-route', function (Request $request) {
     $start = explode(',', $request->query('start'));
     $end   = explode(',', $request->query('end'));
 
@@ -55,45 +66,34 @@ Route::get('/generate-custom-route', function (Request $request) {//ORS
     $endLng   = floatval($end[0]);
     $endLat   = floatval($end[1]);
 
-    $client = new Client(['verify' => false]);
-
-    try {
-        $response = $client->post('https://api.openrouteservice.org/v2/directions/driving-car', [
-            'headers' => [
-                'Authorization' => env('ORS_API_KEY'),
-                'Content-Type'  => 'application/json',
-            ],
-            'json' => [
-                'coordinates' => [
-                    [$startLng, $startLat],
-                    [$endLng, $endLat]
-                ]
-            ]
-        ]);
-
-        $data = json_decode($response->getBody(), true);//aici sunt toate datele rezultate
-
-        if(!isset($data['features'][0]['geometry']['coordinates'])){//aici am coordonatele rutei rezultate
-            return response()->json(['error' => 'No route returned from ORS'], 500);
-        }
-
-        // Inversăm coordonatele pentru Leaflet: [lat, lng]
-        $route = array_map(fn($p) => ['lat' => $p[1], 'lng' => $p[0]], $data['features'][0]['geometry']['coordinates']);
-
-        return response()->json([
-            'start' => ['lat' => $startLat, 'lng' => $startLng],
-            'end'   => ['lat' => $endLat, 'lng' => $endLng],
-            'route' => $route,
-        ]);
-
-    } catch (\GuzzleHttp\Exception\RequestException $e) {
-    $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : $e->getMessage();
-    return response()->json([
-        'error' => 'OpenRouteService request failed',
-        'message' => $responseBody
-    ], 500);
+    $apiKey = env('ORS_API_KEY');
+    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HEADER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Accept: application/geo+json;charset=UTF-8"
+    ]);
+    $response = curl_exec($ch);
+    if($response === false){
+        $error = curl_error($ch);
+        curl_close($ch);
+        return response()->json(['error' => $error]);
     }
+    curl_close($ch);
+
+    $data = json_decode($response, true);
+    $route = $data['features'][0]['geometry']['coordinates'] ?? [];
+    return response()->json([
+        'start' => [$startLat, $startLng],
+        'end'   => [$endLat, $endLng],
+        'route' => $route
+    ], 200, [], JSON_PRETTY_PRINT);
 });
+
+
 
 
 Route::get('/test-key', function() {
@@ -108,6 +108,34 @@ Route::get('/generate-custom-route-verificare', function () {
             ['lat' => 46.7900, 'lng' => 23.6100],
         ]
     ]);
+});
+
+
+Route::get('/simple-route', function () {
+    $start = "8.681495,49.41461";
+    $end   = "8.687872,49.420318";
+    $apiKey = env('ORS_API_KEY');
+
+    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$start}&end={$end}";
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HEADER, false);
+
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        "Accept: application/geo+json;charset=UTF-8"
+    ]);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $response = curl_exec($ch);
+    if($response === false){
+        $error = curl_error($ch);
+        curl_close($ch);
+        return response()->json(['error' => $error]);
+    }
+    curl_close($ch);
+    $data = json_decode($response, true);
+    return response()->json($data, 200, [], JSON_PRETTY_PRINT);
 });
 
 
