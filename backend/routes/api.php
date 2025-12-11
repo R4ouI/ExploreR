@@ -4,25 +4,37 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use GuzzleHttp\Client;
-
+use App\Providers\KeyManager; //pentru singletone
 
 
 Route::get('/generate-random-route', function (Request $request) {
 
     $start = explode(',', $request->query('start'));
+    $distance = floatval($request->query('length'));
+    $terrain = $request->query('terrain');
+    $loop = filter_var($request->query('loop'), FILTER_VALIDATE_BOOLEAN);
     if(count($start) !== 2){
         return response()->json(['error' => 'Invalid start coordinates'], 400);
     }
-
+    if ($loop==1)
+        $distance = $distance/2;//daca e loop atunci jumatate din distanta o sa fie dus intors
     $startLng = floatval($start[0]);
     $startLat = floatval($start[1]);
-    $endLng = $startLng + (rand(-10, 10) / 100);
-    $endLat = $startLat + (rand(-10, 10) / 100);
+    $unghiGrade = rand(0, 360);//unghi random in care sa mearga ruta
+    $unghiRad = deg2rad($unghiGrade);//convertim în radiani sa mearga sin cos
+    $distantaLng= ($distance/78)* sin($unghiRad);//un grad de longitudine e aproximativ 78 km
+    $distantaLat= ($distance/111)* cos($unghiRad);//un grad de latitudine e aproximativ 111 km
+    $endLng = $startLng + $distantaLng;
+    $endLat = $startLat + $distantaLat;
 
-    $apiKey = env('ORS_API_KEY');
-
-    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
-
+    $apiKey = KeyManager::getInstance()->getKey();
+    if ($loop==0)
+        $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
+    else
+    {
+        $coordonateRuta = "{$startLng},{$startLat};{$endLng},{$endLat};{$startLng},{$startLat}";
+        $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&coordinates={$coordonateRuta}";
+    }
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -38,6 +50,11 @@ Route::get('/generate-random-route', function (Request $request) {
         curl_close($ch);
         return response()->json(['error' => $error]);
     }
+
+    if (isset($data['error'])) {
+        return response()->json(['ors_error' => $data['error']], 500, [], JSON_PRETTY_PRINT);
+}
+
     curl_close($ch);
     $data = json_decode($response, true);//contine tot raspunsul
     $route = $data['features'][0]['geometry']['coordinates'] ?? [];//ia da lista de coordonate din data
@@ -47,6 +64,7 @@ Route::get('/generate-random-route', function (Request $request) {
         'route' => $route
     ], 200, [], JSON_PRETTY_PRINT);
 });
+
 
 
 
@@ -66,7 +84,7 @@ Route::get('/generate-custom-route', function (Request $request) {
     $endLng   = floatval($end[0]);
     $endLat   = floatval($end[1]);
 
-    $apiKey = env('ORS_API_KEY');
+    $apiKey = KeyManager::getInstance()->getKey();
     $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
@@ -97,7 +115,7 @@ Route::get('/generate-custom-route', function (Request $request) {
 
 
 Route::get('/test-key', function() {
-    return response()->json(['api_key' => env('ORS_API_KEY')]);
+    return response()->json(['api_key' => KeyManager::getInstance()->getKey()]);
 });
 
 Route::get('/generate-custom-route-verificare', function () {
@@ -114,7 +132,7 @@ Route::get('/generate-custom-route-verificare', function () {
 Route::get('/simple-route', function () {
     $start = "8.681495,49.41461";
     $end   = "8.687872,49.420318";
-    $apiKey = env('ORS_API_KEY');
+    $apiKey = KeyManager::getInstance()->getKey();
 
     $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$start}&end={$end}";
 
