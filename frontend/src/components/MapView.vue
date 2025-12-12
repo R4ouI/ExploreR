@@ -2,7 +2,7 @@
   <div class="map-container">
     <div class="panels-wrapper">
       <!-- Butonul principal -->
-      <button 
+      <button
         @click="togglePanel"
         class="generate-btn main">
         Generează traseu
@@ -88,7 +88,7 @@ const generateRandomRouteFromBackend = async () => {
   try {
     const response = await api.get("/generate-random-route", {
       params: {
-        start: random.value.start,      
+        start: random.value.start,
         length: random.value.length,
         terrain: random.value.terrain,
         loop: random.value.loop
@@ -96,32 +96,36 @@ const generateRandomRouteFromBackend = async () => {
     });
 
     const route = response.data.route;
-
     if (!route || !route.length) {
       console.error("Ruta random este goală sau invalidă", route);
       alert("Ruta Random generată este goală!");
       return;
     }
-
-    // Inversăm lng, lat -> lat, lng pentru Leaflet
     const coords = route.map(p => [p[1], p[0]]);
-
     if (currentPolyline) map.removeLayer(currentPolyline);
-
     currentPolyline = L.polyline(coords, { color: "blue" }).addTo(map);
     map.fitBounds(currentPolyline.getBounds());
 
   } catch (err) {
-    console.error(err);
-    alert("Eroare la generarea traseului Random!");
+    if (err.response && err.response.status === 404) {
+      console.warn("Nu s-a găsit rută validă după 100 de încercări.");
+      return;
+    }
+    if (err.response && err.response.status >= 500) {
+        console.error("Eroare fatală a serverului:", err.response.data);
+        alert("EROARE CRITICĂ A SERVERULUI!");
+    } else {
+        console.error(err);
+        alert("Eroare la generarea traseului Random!");
+    }
   }
 };
 const generateCustomRouteFromBackend = async () => {
   try {
     const response = await api.get("/generate-custom-route", {
       params: {
-        start: custom.value.start, 
-        end: custom.value.end      
+        start: custom.value.start,
+        end: custom.value.end
       }
     });
 
@@ -193,7 +197,7 @@ html, body { margin:0; padding:0; height:100%; }
 
 .input-btn::placeholder {
   color: white;
-  opacity: 1; 
+  opacity: 1;
 }
 
 /* Checkbox */
