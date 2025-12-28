@@ -1,43 +1,47 @@
 <template>
   <div class="map-container">
     <div class="panels-wrapper">
-      <!-- Butonul principal -->
       <button
         @click="togglePanel"
         class="generate-btn main">
         Generează traseu
       </button>
 
-      <!-- Random / Personalizat -->
       <div v-if="showPanel" class="panel choices-column">
         <button class="generate-btn" @click="selectRouteType('random')">Random</button>
         <button class="generate-btn" @click="selectRouteType('custom')">Personalizat</button>
       </div>
 
-      <!-- Alegeri Random -->
       <div v-if="showPanel && selectedRouteType === 'random'" class="panel form-column">
         <input class="input-btn" type="text" v-model="random.start" placeholder="Punct de plecare" />
         <input class="input-btn" type="number" v-model="random.length" placeholder="Lungime (km)" />
-        <select class="input-btn" v-model="random.terrain">
-          <option value="Montan">Montan</option>
-          <option value="Nemontan">Nemontan</option>
-          <option value="Mixt">Mixt</option>
+
+        <select class="input-btn" v-model="random.mode">
+          <option value="driving-car">Mașină</option>
+          <option value="cycling-regular">Bicicletă</option>
+          <option value="foot-hiking">Mers pe jos</option>
         </select>
+
         <button class="generate-btn checkbox-btn" @click="random.loop = !random.loop">
           Buclă: {{ random.loop ? "Da" : "Nu" }}
         </button>
         <button class="generate-btn" @click="generateRandomRouteFromBackend">Generează Random</button>
       </div>
 
-      <!-- Alegeri Personalizat -->
       <div v-if="showPanel && selectedRouteType === 'custom'" class="panel form-column">
         <input class="input-btn" type="text" v-model="custom.start" placeholder="Punct de plecare" />
         <input class="input-btn" type="text" v-model="custom.end" placeholder="Punct de sosire" />
+
+        <select class="input-btn" v-model="custom.mode">
+          <option value="driving-car">Mașină</option>
+          <option value="cycling-regular">Bicicletă</option>
+          <option value="foot-hiking">Mers pe jos</option>
+        </select>
+
         <button class="generate-btn" @click="generateCustomRouteFromBackend">Generează Personalizat</button>
       </div>
     </div>
 
-    <!-- Harta -->
     <div id="map"></div>
   </div>
 </template>
@@ -52,6 +56,8 @@ import "leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility
 
 let map;
 let currentPolyline;
+let startMarker = null;
+let endMarker = null;
 
 const showPanel = ref(false);
 const selectedRouteType = ref("");
@@ -59,13 +65,14 @@ const selectedRouteType = ref("");
 const random = ref({
   start: "",
   length: "",
-  terrain: "Montan",
+  mode: "driving-car",
   loop: false
 });
 
 const custom = ref({
   start: "",
-  end: ""
+  end: "",
+  mode: "driving-car"
 });
 
 const togglePanel = () => {
@@ -81,8 +88,22 @@ onMounted(() => {
   map = L.map("map").setView([45.9432, 24.9668], 7);
   setTimeout(() => map.invalidateSize(), 300);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-  L.marker([45.9432, 24.9668]).addTo(map).bindPopup("ExploreR — punct de pornire");
 });
+
+const addMarkers = (startCoords, endCoords) => {
+  if (startMarker) map.removeLayer(startMarker);
+  if (endMarker) map.removeLayer(endMarker);
+
+  startMarker = L.marker([startCoords[1], startCoords[0]])
+    .addTo(map)
+    .bindPopup("<strong>Punct de Plecare</strong>");
+
+  endMarker = L.marker([endCoords[1], endCoords[0]])
+    .addTo(map)
+    .bindPopup("<strong>Sosire</strong>");
+
+  startMarker.openPopup();
+};
 
 const generateRandomRouteFromBackend = async () => {
   try {
@@ -90,57 +111,63 @@ const generateRandomRouteFromBackend = async () => {
       params: {
         start: random.value.start,
         length: random.value.length,
-        terrain: random.value.terrain,
+        mode: random.value.mode,
         loop: random.value.loop
       }
     });
 
     const route = response.data.route;
+    const startPoint = response.data.start;
+    const endPoint = response.data.end;
+
     if (!route || !route.length) {
-      console.error("Ruta random este goală sau invalidă", route);
       alert("Ruta Random generată este goală!");
       return;
     }
+
     const coords = route.map(p => [p[1], p[0]]);
     if (currentPolyline) map.removeLayer(currentPolyline);
-    currentPolyline = L.polyline(coords, { color: "blue" }).addTo(map);
+    currentPolyline = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
     map.fitBounds(currentPolyline.getBounds());
+
+    addMarkers(startPoint, endPoint);
 
   } catch (err) {
     if (err.response && err.response.status === 404) {
-      console.warn("Nu s-a găsit rută validă după 100 de încercări.");
-      return;
-    }
-    if (err.response && err.response.status >= 500) {
-        console.error("Eroare fatală a serverului:", err.response.data);
-        alert("EROARE CRITICĂ A SERVERULUI!");
+      alert("Nu s-a găsit o rută validă. Încearcă alte setări.");
     } else {
-        console.error(err);
-        alert("Eroare la generarea traseului Random!");
+      console.error(err);
+      alert("Eroare la generarea traseului Random!");
     }
   }
 };
+
 const generateCustomRouteFromBackend = async () => {
   try {
     const response = await api.get("/generate-custom-route", {
       params: {
         start: custom.value.start,
-        end: custom.value.end
+        end: custom.value.end,
+        mode: custom.value.mode
       }
     });
 
     const route = response.data.route;
+    const startPoint = response.data.start;
+    const endPoint = response.data.end;
 
     if (!route || !route.length) {
-      console.error("Ruta este goală sau invalidă", route);
       alert("Ruta generată este goală!");
       return;
     }
-    // Inversăm lng, lat -> lat, lng
+
     const coords = route.map(p => [p[1], p[0]]);
     if (currentPolyline) map.removeLayer(currentPolyline);
-    currentPolyline = L.polyline(coords, { color: "green" }).addTo(map);
+    currentPolyline = L.polyline(coords, { color: "green", weight: 5 }).addTo(map);
     map.fitBounds(currentPolyline.getBounds());
+
+    addMarkers(startPoint, endPoint);
+
   } catch (err) {
     console.error(err);
     alert("Eroare la generarea traseului Personalizat!");
@@ -152,7 +179,6 @@ const generateCustomRouteFromBackend = async () => {
 html, body { margin:0; padding:0; height:100%; }
 .map-container { height:100vh; width:100vw; position:relative; }
 #map { height:100%; width:100%; }
-
 
 .panels-wrapper {
   position: absolute;
@@ -167,7 +193,6 @@ html, body { margin:0; padding:0; height:100%; }
 .choices-column { display: flex; flex-direction: column; gap:5px; }
 .form-column { display: flex; flex-direction: column; gap:5px; }
 
-/* Buton principal */
 .generate-btn.main {
   flex-shrink:0; width:auto;
   background-color:#2563eb; color:white;
@@ -176,7 +201,6 @@ html, body { margin:0; padding:0; height:100%; }
 }
 .generate-btn.main:hover { background-color:#1e40af; }
 
-/* Butoane generale */
 .generate-btn {
   display:block; width:auto;
   background-color:#2563eb; color:white;
@@ -185,14 +209,28 @@ html, body { margin:0; padding:0; height:100%; }
 }
 .generate-btn:hover { background-color:#1e40af; }
 
-/* Input și select */
 .input-btn {
   background-color: #2563eb;
   color: white;
   border: none;
   border-radius: 8px;
   padding: 10px 15px;
-  cursor: text;
+  cursor: pointer;
+}
+
+select.input-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 12px;
+    padding-right: 30px;
+}
+select.input-btn option {
+    background-color: #2563eb;
+    color: white;
 }
 
 .input-btn::placeholder {
@@ -200,7 +238,6 @@ html, body { margin:0; padding:0; height:100%; }
   opacity: 1;
 }
 
-/* Checkbox */
 .checkbox-btn {
   background-color: #2563eb;
   color: white;

@@ -3,61 +3,153 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
-use GuzzleHttp\Client;
-use App\Providers\KeyManager; //pentru singletone
+use Illuminate\Support\Facades\Http;
+use App\Providers\KeyManager;
+
+
+function getCoordinatesFromORS($locationName) {
+    if (strpos($locationName, ',') !== false) {
+        $parts = explode(',', $locationName);
+        $p0 = floatval(trim($parts[0]));
+        $p1 = floatval(trim($parts[1]));
+        if ($p0 != 0 && $p1 != 0) {
+            return ['lng' => $p0, 'lat' => $p1];
+        }
+    }
+
+    $apiKey = KeyManager::getInstance()->getKey();
+
+    $url = "https://api.openrouteservice.org/geocode/search?api_key={$apiKey}&text=" . urlencode($locationName) . "&size=1";
+
+    try {
+        $response = Http::withoutVerifying()->get($url);
+        if ($response->successful()) {
+            $data = $response->json();
+            if (!empty($data['features'])) {
+                $coords = $data['features'][0]['geometry']['coordinates'];
+                return ['lng' => $coords[0], 'lat' => $coords[1]];
+            }
+        }
+    } catch (\Exception $e) {
+        logger()->error("ORS Geocoding Error: " . $e->getMessage());
+    }
+
+    return null;
+}
+
+
+Route::get('/generate-custom-route', function (Request $request) {
+
+    $startInput = $request->query('start');
+    $endInput   = $request->query('end');
+
+    $mode = $request->query('mode', 'driving-car');
+    $allowedModes = ['driving-car', 'cycling-regular', 'foot-hiking'];
+    if (!in_array($mode, $allowedModes)) {
+        $mode = 'driving-car';
+    }
+
+    $startCoords = getCoordinatesFromORS($startInput);
+    $endCoords   = getCoordinatesFromORS($endInput);
+
+    if (!$startCoords || !$endCoords) {
+        return response()->json([
+            'error' => 'Nu am putut găsi locațiile specificate. Verifică numele orașelor.'
+        ], 400);
+    }
+
+    $startLng = $startCoords['lng'];
+    $startLat = $startCoords['lat'];
+    $endLng   = $endCoords['lng'];
+    $endLat   = $endCoords['lat'];
+
+    $apiKey = KeyManager::getInstance()->getKey();
+
+    $url = "https://api.openrouteservice.org/v2/directions/{$mode}?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HEADER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Accept: application/geo+json;charset=UTF-8"]);
+
+    $response = curl_exec($ch);
+
+    if($response === false){
+        $error = curl_error($ch);
+        curl_close($ch);
+        return response()->json(['error' => 'CURL Error: ' . $error], 500);
+    }
+    curl_close($ch);
+
+    $data = json_decode($response, true);
+
+    if (!isset($data['features']) || empty($data['features'])) {
+        return response()->json([
+            'status' => 'ORS_ERROR',
+            'message' => 'Nu s-a găsit un drum între aceste puncte.',
+            'ors_response' => $data
+        ], 422);
+    }
+
+    $route = $data['features'][0]['geometry']['coordinates'] ?? [];
+
+    return response()->json([
+        'start' => [$startLng, $startLat],
+        'end'   => [$endLng, $endLat],
+        'route' => $route
+    ], 200, [], JSON_PRETTY_PRINT);
+});
 
 
 Route::get('/generate-random-route', function (Request $request) {
 
-    $start = explode(',', $request->query('start'));
-    $distance = floatval($request->query('length'));
-    $terrain = $request->query('terrain');
-    $loop = filter_var($request->query('loop'), FILTER_VALIDATE_BOOLEAN);
+    $startInput = $request->query('start');
 
-    if(count($start) !== 2){
-        return response()->json(['error' => 'Invalid start coordinates'], 400);
+    $mode = $request->query('mode', 'driving-car');
+    $allowedModes = ['driving-car', 'cycling-regular', 'foot-hiking'];
+    if (!in_array($mode, $allowedModes)) {
+        $mode = 'driving-car';
     }
 
-    if ($loop == 1)
-        $distance = $distance/2; // daca e loop atunci jumatate din distanta o sa fie dus intors
+    $coords = getCoordinatesFromORS($startInput);
 
-    $startLng = floatval($start[0]);
-    $startLat = floatval($start[1]);
+    if (!$coords) {
+        return response()->json(['error' => 'Invalid start location'], 400);
+    }
+
+    $startLng = $coords['lng'];
+    $startLat = $coords['lat'];
+
+    $distance = floatval($request->query('length'));
+    $loop = filter_var($request->query('loop'), FILTER_VALIDATE_BOOLEAN);
+
+    if ($loop == 1) $distance = $distance/2;
 
     $apiKey = KeyManager::getInstance()->getKey();
-
     $maxAttempts = 100;
     $routeFound = false;
     $data = null;
-    $endLng = null;
-    $endLat = null;
-    $response = false;
+    $endLng = null; $endLat = null;
 
     for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
-
-        $unghiGrade = rand(0, 360);//unghi random in care sa mearga ruta
-        $unghiRad = deg2rad($unghiGrade);//convertim în radiani sa mearga sin cos
-        $distantaLng= ($distance/78)* sin($unghiRad);//un grad de longitudine e aproximativ 78 km
-        $distantaLat= ($distance/111)* cos($unghiRad);//un grad de latitudine e aproximativ 111 km
+        $unghiGrade = rand(0, 360);
+        $unghiRad = deg2rad($unghiGrade);
+        $distantaLng= ($distance/78)* sin($unghiRad);
+        $distantaLat= ($distance/111)* cos($unghiRad);
         $endLng = $startLng + $distantaLng;
         $endLat = $startLat + $distantaLat;
-        logger()->info('Attempt ' . ($attempt + 1) . ' | Angle: ' . $unghiGrade . ' degrees | End Coords: ' . $endLng . ',' . $endLat);
+
         $ch = curl_init();
-        $httpHeaders = [
-            "Accept: application/geo+json;charset=UTF-8"
-        ];
+        $httpHeaders = ["Accept: application/geo+json;charset=UTF-8"];
         $postData = null;
 
         if ($loop == 0) {
-            $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
+            $url = "https://api.openrouteservice.org/v2/directions/{$mode}?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
         } else {
-            $url = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
-            $coordinates = [
-                [$startLng, $startLat],
-                [$endLng, $endLat],
-                [$startLng, $startLat]
-            ];
-            //JSON pentru loop
+            $url = "https://api.openrouteservice.org/v2/directions/{$mode}/geojson";
+            $coordinates = [[$startLng, $startLat], [$endLng, $endLat], [$startLng, $startLat]];
             $postData = json_encode(['coordinates' => $coordinates]);
             $httpHeaders[] = "Content-Type: application/json";
             $httpHeaders[] = "Authorization: {$apiKey}";
@@ -73,136 +165,41 @@ Route::get('/generate-random-route', function (Request $request) {
         }
         curl_setopt($ch, CURLOPT_HTTPHEADER, $httpHeaders);
         $response = curl_exec($ch);
-        if($response === false){
-            $error = curl_error($ch);
+
+        if($response === false)
+        {
             curl_close($ch);
-            return response()->json(['error' => $error], 500, [], JSON_PRETTY_PRINT);
-        }
-        curl_close($ch);
-        try {
-            $data = json_decode($response, true);
-        } catch (\Exception $e) {
             continue;
         }
-        if (isset($data['features']) && !empty($data['features']) &&
-            isset($data['features'][0]['geometry']['coordinates'])) {
+        curl_close($ch);
+
+        try {
+            $data = json_decode($response, true);
+        }
+        catch (\Exception $e)
+        {
+            continue;
+        }
+
+        if (isset($data['features']) && !empty($data['features'])) {
             $routeFound = true;
             break;
         }
     }
 
-    if (!$routeFound) {
-        $message = 'Nu s-a putut genera un traseu valid după ' . $maxAttempts . ' încercări. Punctul de start poate fi izolat sau API-ul a returnat o eroare necunoscută.';
-        $ors_error_details = $data['error'] ?? ['message' => $message];
-        return response()->json([
-            'status' => 'ROUTE_SEARCH_FAILED',
-            'ors_error' => $ors_error_details
-        ], 404, [], JSON_PRETTY_PRINT);
-    }
+    if (!$routeFound) { return response()->json(['status' => 'ROUTE_SEARCH_FAILED'], 404); }
 
     $route = $data['features'][0]['geometry']['coordinates'] ?? [];
     return response()->json([
         'start' => [$startLng, $startLat],
         'end'   => [$endLng, $endLat],
         'route' => $route
-    ], 200, [], JSON_PRETTY_PRINT);
+    ], 200);
 });
-
-
-
-
-
-Route::get('/generate-custom-route', function (Request $request) {
-    $start = explode(',', $request->query('start'));
-    $end   = explode(',', $request->query('end'));
-
-    if(count($start) !== 2 || count($end) !== 2){
-        return response()->json(['error' => 'Invalid start or end coordinates'], 400);
-    }
-
-    $startLng = floatval($start[0]);
-    $startLat = floatval($start[1]);
-    $endLng   = floatval($end[0]);
-    $endLat   = floatval($end[1]);
-
-    $apiKey = KeyManager::getInstance()->getKey();
-    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HEADER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Accept: application/geo+json;charset=UTF-8"
-    ]);
-    $response = curl_exec($ch);
-    if($response === false){
-        $error = curl_error($ch);
-        curl_close($ch);
-        return response()->json(['error' => $error]);
-    }
-    curl_close($ch);
-
-    $data = json_decode($response, true);
-    $route = $data['features'][0]['geometry']['coordinates'] ?? [];
-    return response()->json([
-        'start' => [$startLat, $startLng],
-        'end'   => [$endLat, $endLng],
-        'route' => $route
-    ], 200, [], JSON_PRETTY_PRINT);
-});
-
-
-
 
 Route::get('/test-key', function() {
     return response()->json(['api_key' => KeyManager::getInstance()->getKey()]);
 });
 
-Route::get('/generate-custom-route-verificare', function () {
-    return response()->json([
-        'route' => [
-            ['lat' => 46.7700, 'lng' => 23.5900],
-            ['lat' => 46.7800, 'lng' => 23.6000],
-            ['lat' => 46.7900, 'lng' => 23.6100],
-        ]
-    ]);
-});
-
-
-Route::get('/simple-route', function () {
-    $start = "8.681495,49.41461";
-    $end   = "8.687872,49.420318";
-    $apiKey = KeyManager::getInstance()->getKey();
-
-    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$start}&end={$end}";
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HEADER, false);
-
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        "Accept: application/geo+json;charset=UTF-8"
-    ]);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    $response = curl_exec($ch);
-    if($response === false){
-        $error = curl_error($ch);
-        curl_close($ch);
-        return response()->json(['error' => $error]);
-    }
-    curl_close($ch);
-    $data = json_decode($response, true);
-    return response()->json($data, 200, [], JSON_PRETTY_PRINT);
-});
-
-
-
-
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
-
-
-
-
