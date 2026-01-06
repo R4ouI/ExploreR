@@ -1,0 +1,606 @@
+Index: frontend/src/components/MapView.vue
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><template>\n  <div class=\"map-container\">\n    <div class=\"panels-wrapper\">\n      <!-- Butonul principal -->\n      <button\n        @click=\"togglePanel\"\n        class=\"generate-btn main\">\n        Generează traseu\n      </button>\n\n      <!-- Random / Personalizat -->\n      <div v-if=\"showPanel\" class=\"panel choices-column\">\n        <button class=\"generate-btn\" @click=\"selectRouteType('random')\">Random</button>\n        <button class=\"generate-btn\" @click=\"selectRouteType('custom')\">Personalizat</button>\n      </div>\n\n      <!-- Alegeri Random -->\n      <div v-if=\"showPanel && selectedRouteType === 'random'\" class=\"panel form-column\">\n        <input class=\"input-btn\" type=\"text\" v-model=\"random.start\" placeholder=\"Punct de plecare\" />\n        <input class=\"input-btn\" type=\"number\" v-model=\"random.length\" placeholder=\"Lungime (km)\" />\n        <select class=\"input-btn\" v-model=\"random.terrain\">\n          <option value=\"Montan\">Montan</option>\n          <option value=\"Nemontan\">Nemontan</option>\n          <option value=\"Mixt\">Mixt</option>\n        </select>\n        <button class=\"generate-btn checkbox-btn\" @click=\"random.loop = !random.loop\">\n          Buclă: {{ random.loop ? \"Da\" : \"Nu\" }}\n        </button>\n        <button class=\"generate-btn\" @click=\"generateRandomRouteFromBackend\">Generează Random</button>\n      </div>\n\n      <!-- Alegeri Personalizat -->\n      <div v-if=\"showPanel && selectedRouteType === 'custom'\" class=\"panel form-column\">\n        <input class=\"input-btn\" type=\"text\" v-model=\"custom.start\" placeholder=\"Punct de plecare\" />\n        <input class=\"input-btn\" type=\"text\" v-model=\"custom.end\" placeholder=\"Punct de sosire\" />\n        <button class=\"generate-btn\" @click=\"generateCustomRouteFromBackend\">Generează Personalizat</button>\n      </div>\n    </div>\n\n    <!-- Harta -->\n    <div id=\"map\"></div>\n  </div>\n</template>\n\n<script setup>\nimport { ref, onMounted } from \"vue\";\nimport api from \"../api\";\nimport L from \"leaflet\";\nimport \"leaflet/dist/leaflet.css\";\nimport \"leaflet-defaulticon-compatibility\";\nimport \"leaflet-defaulticon-compatibility/dist/leaflet-defaulticon-compatibility.css\";\n\nlet map;\nlet currentPolyline;\n\nconst showPanel = ref(false);\nconst selectedRouteType = ref(\"\");\n\nconst random = ref({\n  start: \"\",\n  length: \"\",\n  terrain: \"Montan\",\n  loop: false\n});\n\nconst custom = ref({\n  start: \"\",\n  end: \"\"\n});\n\nconst togglePanel = () => {\n  showPanel.value = !showPanel.value;\n  if (!showPanel.value) selectedRouteType.value = \"\";\n};\n\nconst selectRouteType = (type) => {\n  selectedRouteType.value = type;\n};\n\nonMounted(() => {\n  map = L.map(\"map\").setView([45.9432, 24.9668], 7);\n  setTimeout(() => map.invalidateSize(), 300);\n  L.tileLayer(\"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png\").addTo(map);\n  L.marker([45.9432, 24.9668]).addTo(map).bindPopup(\"ExploreR — punct de pornire\");\n});\n\nconst generateRandomRouteFromBackend = async () => {\n  try {\n    const response = await api.get(\"/generate-random-route\", {\n      params: {\n        start: random.value.start,\n        length: random.value.length,\n        terrain: random.value.terrain,\n        loop: random.value.loop\n      }\n    });\n\n    const route = response.data.route;\n    if (!route || !route.length) {\n      console.error(\"Ruta random este goală sau invalidă\", route);\n      alert(\"Ruta Random generată este goală!\");\n      return;\n    }\n    const coords = route.map(p => [p[1], p[0]]);\n    if (currentPolyline) map.removeLayer(currentPolyline);\n    currentPolyline = L.polyline(coords, { color: \"blue\" }).addTo(map);\n    map.fitBounds(currentPolyline.getBounds());\n\n  } catch (err) {\n    if (err.response && err.response.status === 404) {\n      console.warn(\"Nu s-a găsit rută validă după 100 de încercări.\");\n      return;\n    }\n    if (err.response && err.response.status >= 500) {\n        console.error(\"Eroare fatală a serverului:\", err.response.data);\n        alert(\"EROARE CRITICĂ A SERVERULUI!\");\n    } else {\n        console.error(err);\n        alert(\"Eroare la generarea traseului Random!\");\n    }\n  }\n};\nconst generateCustomRouteFromBackend = async () => {\n  try {\n    const response = await api.get(\"/generate-custom-route\", {\n      params: {\n        start: custom.value.start,\n        end: custom.value.end\n      }\n    });\n\n    const route = response.data.route;\n\n    if (!route || !route.length) {\n      console.error(\"Ruta este goală sau invalidă\", route);\n      alert(\"Ruta generată este goală!\");\n      return;\n    }\n    // Inversăm lng, lat -> lat, lng\n    const coords = route.map(p => [p[1], p[0]]);\n    if (currentPolyline) map.removeLayer(currentPolyline);\n    currentPolyline = L.polyline(coords, { color: \"green\" }).addTo(map);\n    map.fitBounds(currentPolyline.getBounds());\n  } catch (err) {\n    console.error(err);\n    alert(\"Eroare la generarea traseului Personalizat!\");\n  }\n};\n</script>\n\n<style>\nhtml, body { margin:0; padding:0; height:100%; }\n.map-container { height:100vh; width:100vw; position:relative; }\n#map { height:100%; width:100%; }\n\n\n.panels-wrapper {\n  position: absolute;\n  top: 20px;\n  left: 20px;\n  display: flex;\n  align-items: flex-start;\n  gap: 10px;\n  z-index: 1000;\n}\n\n.choices-column { display: flex; flex-direction: column; gap:5px; }\n.form-column { display: flex; flex-direction: column; gap:5px; }\n\n/* Buton principal */\n.generate-btn.main {\n  flex-shrink:0; width:auto;\n  background-color:#2563eb; color:white;\n  padding:10px 15px; border-radius:8px; border:none;\n  cursor:pointer; font-weight:bold;\n}\n.generate-btn.main:hover { background-color:#1e40af; }\n\n/* Butoane generale */\n.generate-btn {\n  display:block; width:auto;\n  background-color:#2563eb; color:white;\n  padding:10px 15px; border-radius:8px; border:none;\n  cursor:pointer; font-weight:bold;\n}\n.generate-btn:hover { background-color:#1e40af; }\n\n/* Input și select */\n.input-btn {\n  background-color: #2563eb;\n  color: white;\n  border: none;\n  border-radius: 8px;\n  padding: 10px 15px;\n  cursor: text;\n}\n\n.input-btn::placeholder {\n  color: white;\n  opacity: 1;\n}\n\n/* Checkbox */\n.checkbox-btn {\n  background-color: #2563eb;\n  color: white;\n  border: none;\n  border-radius: 8px;\n  padding: 10px 15px;\n  cursor: pointer;\n  text-align: left;\n}\n</style>\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/frontend/src/components/MapView.vue b/frontend/src/components/MapView.vue
+--- a/frontend/src/components/MapView.vue	(revision c341a4cc1d0c899ddc8a6c2c3752616fd49b5bf0)
++++ b/frontend/src/components/MapView.vue	(date 1766887257263)
+@@ -1,43 +1,47 @@
+ <template>
+   <div class="map-container">
+     <div class="panels-wrapper">
+-      <!-- Butonul principal -->
+       <button
+         @click="togglePanel"
+         class="generate-btn main">
+         Generează traseu
+       </button>
+ 
+-      <!-- Random / Personalizat -->
+       <div v-if="showPanel" class="panel choices-column">
+         <button class="generate-btn" @click="selectRouteType('random')">Random</button>
+         <button class="generate-btn" @click="selectRouteType('custom')">Personalizat</button>
+       </div>
+ 
+-      <!-- Alegeri Random -->
+       <div v-if="showPanel && selectedRouteType === 'random'" class="panel form-column">
+         <input class="input-btn" type="text" v-model="random.start" placeholder="Punct de plecare" />
+         <input class="input-btn" type="number" v-model="random.length" placeholder="Lungime (km)" />
+-        <select class="input-btn" v-model="random.terrain">
+-          <option value="Montan">Montan</option>
+-          <option value="Nemontan">Nemontan</option>
+-          <option value="Mixt">Mixt</option>
++
++        <select class="input-btn" v-model="random.mode">
++          <option value="driving-car">Mașină</option>
++          <option value="cycling-regular">Bicicletă</option>
++          <option value="foot-hiking">Mers pe jos</option>
+         </select>
++
+         <button class="generate-btn checkbox-btn" @click="random.loop = !random.loop">
+           Buclă: {{ random.loop ? "Da" : "Nu" }}
+         </button>
+         <button class="generate-btn" @click="generateRandomRouteFromBackend">Generează Random</button>
+       </div>
+ 
+-      <!-- Alegeri Personalizat -->
+       <div v-if="showPanel && selectedRouteType === 'custom'" class="panel form-column">
+         <input class="input-btn" type="text" v-model="custom.start" placeholder="Punct de plecare" />
+         <input class="input-btn" type="text" v-model="custom.end" placeholder="Punct de sosire" />
++
++        <select class="input-btn" v-model="custom.mode">
++          <option value="driving-car">Mașină</option>
++          <option value="cycling-regular">Bicicletă</option>
++          <option value="foot-hiking">Mers pe jos</option>
++        </select>
++
+         <button class="generate-btn" @click="generateCustomRouteFromBackend">Generează Personalizat</button>
+       </div>
+     </div>
+ 
+-    <!-- Harta -->
+     <div id="map"></div>
+   </div>
+ </template>
+@@ -52,6 +56,8 @@
+ 
+ let map;
+ let currentPolyline;
++let startMarker = null;
++let endMarker = null;
+ 
+ const showPanel = ref(false);
+ const selectedRouteType = ref("");
+@@ -59,13 +65,14 @@
+ const random = ref({
+   start: "",
+   length: "",
+-  terrain: "Montan",
++  mode: "driving-car",
+   loop: false
+ });
+ 
+ const custom = ref({
+   start: "",
+-  end: ""
++  end: "",
++  mode: "driving-car"
+ });
+ 
+ const togglePanel = () => {
+@@ -81,8 +88,22 @@
+   map = L.map("map").setView([45.9432, 24.9668], 7);
+   setTimeout(() => map.invalidateSize(), 300);
+   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+-  L.marker([45.9432, 24.9668]).addTo(map).bindPopup("ExploreR — punct de pornire");
+ });
++
++const addMarkers = (startCoords, endCoords) => {
++  if (startMarker) map.removeLayer(startMarker);
++  if (endMarker) map.removeLayer(endMarker);
++
++  startMarker = L.marker([startCoords[1], startCoords[0]])
++    .addTo(map)
++    .bindPopup("<strong>Punct de Plecare</strong>");
++
++  endMarker = L.marker([endCoords[1], endCoords[0]])
++    .addTo(map)
++    .bindPopup("<strong>Sosire</strong>");
++
++  startMarker.openPopup();
++};
+ 
+ const generateRandomRouteFromBackend = async () => {
+   try {
+@@ -90,57 +111,63 @@
+       params: {
+         start: random.value.start,
+         length: random.value.length,
+-        terrain: random.value.terrain,
++        mode: random.value.mode,
+         loop: random.value.loop
+       }
+     });
+ 
+     const route = response.data.route;
++    const startPoint = response.data.start;
++    const endPoint = response.data.end;
++
+     if (!route || !route.length) {
+-      console.error("Ruta random este goală sau invalidă", route);
+       alert("Ruta Random generată este goală!");
+       return;
+     }
++
+     const coords = route.map(p => [p[1], p[0]]);
+     if (currentPolyline) map.removeLayer(currentPolyline);
+-    currentPolyline = L.polyline(coords, { color: "blue" }).addTo(map);
++    currentPolyline = L.polyline(coords, { color: "blue", weight: 5 }).addTo(map);
+     map.fitBounds(currentPolyline.getBounds());
+ 
++    addMarkers(startPoint, endPoint);
++
+   } catch (err) {
+     if (err.response && err.response.status === 404) {
+-      console.warn("Nu s-a găsit rută validă după 100 de încercări.");
+-      return;
+-    }
+-    if (err.response && err.response.status >= 500) {
+-        console.error("Eroare fatală a serverului:", err.response.data);
+-        alert("EROARE CRITICĂ A SERVERULUI!");
++      alert("Nu s-a găsit o rută validă. Încearcă alte setări.");
+     } else {
+-        console.error(err);
+-        alert("Eroare la generarea traseului Random!");
++      console.error(err);
++      alert("Eroare la generarea traseului Random!");
+     }
+   }
+ };
++
+ const generateCustomRouteFromBackend = async () => {
+   try {
+     const response = await api.get("/generate-custom-route", {
+       params: {
+         start: custom.value.start,
+-        end: custom.value.end
++        end: custom.value.end,
++        mode: custom.value.mode
+       }
+     });
+ 
+     const route = response.data.route;
++    const startPoint = response.data.start;
++    const endPoint = response.data.end;
+ 
+     if (!route || !route.length) {
+-      console.error("Ruta este goală sau invalidă", route);
+       alert("Ruta generată este goală!");
+       return;
+     }
+-    // Inversăm lng, lat -> lat, lng
++
+     const coords = route.map(p => [p[1], p[0]]);
+     if (currentPolyline) map.removeLayer(currentPolyline);
+-    currentPolyline = L.polyline(coords, { color: "green" }).addTo(map);
++    currentPolyline = L.polyline(coords, { color: "green", weight: 5 }).addTo(map);
+     map.fitBounds(currentPolyline.getBounds());
++
++    addMarkers(startPoint, endPoint);
++
+   } catch (err) {
+     console.error(err);
+     alert("Eroare la generarea traseului Personalizat!");
+@@ -153,7 +180,6 @@
+ .map-container { height:100vh; width:100vw; position:relative; }
+ #map { height:100%; width:100%; }
+ 
+-
+ .panels-wrapper {
+   position: absolute;
+   top: 20px;
+@@ -167,7 +193,6 @@
+ .choices-column { display: flex; flex-direction: column; gap:5px; }
+ .form-column { display: flex; flex-direction: column; gap:5px; }
+ 
+-/* Buton principal */
+ .generate-btn.main {
+   flex-shrink:0; width:auto;
+   background-color:#2563eb; color:white;
+@@ -176,7 +201,6 @@
+ }
+ .generate-btn.main:hover { background-color:#1e40af; }
+ 
+-/* Butoane generale */
+ .generate-btn {
+   display:block; width:auto;
+   background-color:#2563eb; color:white;
+@@ -185,14 +209,28 @@
+ }
+ .generate-btn:hover { background-color:#1e40af; }
+ 
+-/* Input și select */
+ .input-btn {
+   background-color: #2563eb;
+   color: white;
+   border: none;
+   border-radius: 8px;
+   padding: 10px 15px;
+-  cursor: text;
++  cursor: pointer;
++}
++
++select.input-btn {
++    appearance: none;
++    -webkit-appearance: none;
++    -moz-appearance: none;
++    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
++    background-repeat: no-repeat;
++    background-position: right 10px center;
++    background-size: 12px;
++    padding-right: 30px;
++}
++select.input-btn option {
++    background-color: #2563eb;
++    color: white;
+ }
+ 
+ .input-btn::placeholder {
+@@ -200,7 +238,6 @@
+   opacity: 1;
+ }
+ 
+-/* Checkbox */
+ .checkbox-btn {
+   background-color: #2563eb;
+   color: white;
+Index: backend/routes/api.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?php\n\nuse Illuminate\\Http\\Request;\nuse Illuminate\\Support\\Facades\\Route;\nuse App\\Http\\Controllers\\AuthController;\nuse GuzzleHttp\\Client;\nuse App\\Providers\\KeyManager; //pentru singletone\n\n\nRoute::get('/generate-random-route', function (Request $request) {\n\n    $start = explode(',', $request->query('start'));\n    $distance = floatval($request->query('length'));\n    $terrain = $request->query('terrain');\n    $loop = filter_var($request->query('loop'), FILTER_VALIDATE_BOOLEAN);\n\n    if(count($start) !== 2){\n        return response()->json(['error' => 'Invalid start coordinates'], 400);\n    }\n\n    if ($loop == 1)\n        $distance = $distance/2; // daca e loop atunci jumatate din distanta o sa fie dus intors\n\n    $startLng = floatval($start[0]);\n    $startLat = floatval($start[1]);\n\n    $apiKey = KeyManager::getInstance()->getKey();\n\n    $maxAttempts = 100;\n    $routeFound = false;\n    $data = null;\n    $endLng = null;\n    $endLat = null;\n    $response = false;\n\n    for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {\n\n        $unghiGrade = rand(0, 360);//unghi random in care sa mearga ruta\n        $unghiRad = deg2rad($unghiGrade);//convertim în radiani sa mearga sin cos\n        $distantaLng= ($distance/78)* sin($unghiRad);//un grad de longitudine e aproximativ 78 km\n        $distantaLat= ($distance/111)* cos($unghiRad);//un grad de latitudine e aproximativ 111 km\n        $endLng = $startLng + $distantaLng;\n        $endLat = $startLat + $distantaLat;\n        logger()->info('Attempt ' . ($attempt + 1) . ' | Angle: ' . $unghiGrade . ' degrees | End Coords: ' . $endLng . ',' . $endLat);\n        $ch = curl_init();\n        $httpHeaders = [\n            \"Accept: application/geo+json;charset=UTF-8\"\n        ];\n        $postData = null;\n\n        if ($loop == 0) {\n            $url = \"https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}\";\n        } else {\n            $url = \"https://api.openrouteservice.org/v2/directions/driving-car/geojson\";\n            $coordinates = [\n                [$startLng, $startLat],\n                [$endLng, $endLat],\n                [$startLng, $startLat]\n            ];\n            //JSON pentru loop\n            $postData = json_encode(['coordinates' => $coordinates]);\n            $httpHeaders[] = \"Content-Type: application/json\";\n            $httpHeaders[] = \"Authorization: {$apiKey}\";\n        }\n\n        curl_setopt($ch, CURLOPT_URL, $url);\n        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n        curl_setopt($ch, CURLOPT_HEADER, false);\n        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);\n        if ($postData !== null) {\n            curl_setopt($ch, CURLOPT_POST, TRUE);\n            curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);\n        }\n        curl_setopt($ch, CURLOPT_HTTPHEADER, $httpHeaders);\n        $response = curl_exec($ch);\n        if($response === false){\n            $error = curl_error($ch);\n            curl_close($ch);\n            return response()->json(['error' => $error], 500, [], JSON_PRETTY_PRINT);\n        }\n        curl_close($ch);\n        try {\n            $data = json_decode($response, true);\n        } catch (\\Exception $e) {\n            continue;\n        }\n        if (isset($data['features']) && !empty($data['features']) &&\n            isset($data['features'][0]['geometry']['coordinates'])) {\n            $routeFound = true;\n            break;\n        }\n    }\n\n    if (!$routeFound) {\n        $message = 'Nu s-a putut genera un traseu valid după ' . $maxAttempts . ' încercări. Punctul de start poate fi izolat sau API-ul a returnat o eroare necunoscută.';\n        $ors_error_details = $data['error'] ?? ['message' => $message];\n        return response()->json([\n            'status' => 'ROUTE_SEARCH_FAILED',\n            'ors_error' => $ors_error_details\n        ], 404, [], JSON_PRETTY_PRINT);\n    }\n\n    $route = $data['features'][0]['geometry']['coordinates'] ?? [];\n    return response()->json([\n        'start' => [$startLng, $startLat],\n        'end'   => [$endLng, $endLat],\n        'route' => $route\n    ], 200, [], JSON_PRETTY_PRINT);\n});\n\n\n\n\n\nRoute::get('/generate-custom-route', function (Request $request) {\n    $start = explode(',', $request->query('start'));\n    $end   = explode(',', $request->query('end'));\n\n    if(count($start) !== 2 || count($end) !== 2){\n        return response()->json(['error' => 'Invalid start or end coordinates'], 400);\n    }\n\n    $startLng = floatval($start[0]);\n    $startLat = floatval($start[1]);\n    $endLng   = floatval($end[0]);\n    $endLat   = floatval($end[1]);\n\n    $apiKey = KeyManager::getInstance()->getKey();\n    $url = \"https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}\";\n    $ch = curl_init();\n    curl_setopt($ch, CURLOPT_URL, $url);\n    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n    curl_setopt($ch, CURLOPT_HEADER, false);\n    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);\n    curl_setopt($ch, CURLOPT_HTTPHEADER, [\n        \"Accept: application/geo+json;charset=UTF-8\"\n    ]);\n    $response = curl_exec($ch);\n    if($response === false){\n        $error = curl_error($ch);\n        curl_close($ch);\n        return response()->json(['error' => $error]);\n    }\n    curl_close($ch);\n\n    $data = json_decode($response, true);\n    $route = $data['features'][0]['geometry']['coordinates'] ?? [];\n    return response()->json([\n        'start' => [$startLat, $startLng],\n        'end'   => [$endLat, $endLng],\n        'route' => $route\n    ], 200, [], JSON_PRETTY_PRINT);\n});\n\n\n\n\nRoute::get('/test-key', function() {\n    return response()->json(['api_key' => KeyManager::getInstance()->getKey()]);\n});\n\nRoute::get('/generate-custom-route-verificare', function () {\n    return response()->json([\n        'route' => [\n            ['lat' => 46.7700, 'lng' => 23.5900],\n            ['lat' => 46.7800, 'lng' => 23.6000],\n            ['lat' => 46.7900, 'lng' => 23.6100],\n        ]\n    ]);\n});\n\n\nRoute::get('/simple-route', function () {\n    $start = \"8.681495,49.41461\";\n    $end   = \"8.687872,49.420318\";\n    $apiKey = KeyManager::getInstance()->getKey();\n\n    $url = \"https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$start}&end={$end}\";\n\n    $ch = curl_init();\n    curl_setopt($ch, CURLOPT_URL, $url);\n    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n    curl_setopt($ch, CURLOPT_HEADER, false);\n\n    curl_setopt($ch, CURLOPT_HTTPHEADER, [\n        \"Accept: application/geo+json;charset=UTF-8\"\n    ]);\n    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);\n    $response = curl_exec($ch);\n    if($response === false){\n        $error = curl_error($ch);\n        curl_close($ch);\n        return response()->json(['error' => $error]);\n    }\n    curl_close($ch);\n    $data = json_decode($response, true);\n    return response()->json($data, 200, [], JSON_PRETTY_PRINT);\n});\n\n\n\n\nRoute::post('/login', [AuthController::class, 'login']);\nRoute::post('/register', [AuthController::class, 'register']);\n\n\n\n\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/backend/routes/api.php b/backend/routes/api.php
+--- a/backend/routes/api.php	(revision c341a4cc1d0c899ddc8a6c2c3752616fd49b5bf0)
++++ b/backend/routes/api.php	(date 1766886155728)
+@@ -3,61 +3,153 @@
+ use Illuminate\Http\Request;
+ use Illuminate\Support\Facades\Route;
+ use App\Http\Controllers\AuthController;
+-use GuzzleHttp\Client;
+-use App\Providers\KeyManager; //pentru singletone
++use Illuminate\Support\Facades\Http;
++use App\Providers\KeyManager;
++
++
++function getCoordinatesFromORS($locationName) {
++    if (strpos($locationName, ',') !== false) {
++        $parts = explode(',', $locationName);
++        $p0 = floatval(trim($parts[0]));
++        $p1 = floatval(trim($parts[1]));
++        if ($p0 != 0 && $p1 != 0) {
++            return ['lng' => $p0, 'lat' => $p1];
++        }
++    }
++
++    $apiKey = KeyManager::getInstance()->getKey();
++
++    $url = "https://api.openrouteservice.org/geocode/search?api_key={$apiKey}&text=" . urlencode($locationName) . "&size=1";
++
++    try {
++        $response = Http::withoutVerifying()->get($url);
++        if ($response->successful()) {
++            $data = $response->json();
++            if (!empty($data['features'])) {
++                $coords = $data['features'][0]['geometry']['coordinates'];
++                return ['lng' => $coords[0], 'lat' => $coords[1]];
++            }
++        }
++    } catch (\Exception $e) {
++        logger()->error("ORS Geocoding Error: " . $e->getMessage());
++    }
++
++    return null;
++}
++
++
++Route::get('/generate-custom-route', function (Request $request) {
++
++    $startInput = $request->query('start');
++    $endInput   = $request->query('end');
++
++    $mode = $request->query('mode', 'driving-car');
++    $allowedModes = ['driving-car', 'cycling-regular', 'foot-hiking'];
++    if (!in_array($mode, $allowedModes)) {
++        $mode = 'driving-car';
++    }
++
++    $startCoords = getCoordinatesFromORS($startInput);
++    $endCoords   = getCoordinatesFromORS($endInput);
++
++    if (!$startCoords || !$endCoords) {
++        return response()->json([
++            'error' => 'Nu am putut găsi locațiile specificate. Verifică numele orașelor.'
++        ], 400);
++    }
++
++    $startLng = $startCoords['lng'];
++    $startLat = $startCoords['lat'];
++    $endLng   = $endCoords['lng'];
++    $endLat   = $endCoords['lat'];
++
++    $apiKey = KeyManager::getInstance()->getKey();
++
++    $url = "https://api.openrouteservice.org/v2/directions/{$mode}?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
++
++    $ch = curl_init();
++    curl_setopt($ch, CURLOPT_URL, $url);
++    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
++    curl_setopt($ch, CURLOPT_HEADER, false);
++    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
++    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Accept: application/geo+json;charset=UTF-8"]);
++
++    $response = curl_exec($ch);
++
++    if($response === false){
++        $error = curl_error($ch);
++        curl_close($ch);
++        return response()->json(['error' => 'CURL Error: ' . $error], 500);
++    }
++    curl_close($ch);
++
++    $data = json_decode($response, true);
++
++    if (!isset($data['features']) || empty($data['features'])) {
++        return response()->json([
++            'status' => 'ORS_ERROR',
++            'message' => 'Nu s-a găsit un drum între aceste puncte.',
++            'ors_response' => $data
++        ], 422);
++    }
++
++    $route = $data['features'][0]['geometry']['coordinates'] ?? [];
++
++    return response()->json([
++        'start' => [$startLng, $startLat],
++        'end'   => [$endLng, $endLat],
++        'route' => $route
++    ], 200, [], JSON_PRETTY_PRINT);
++});
+ 
+ 
+ Route::get('/generate-random-route', function (Request $request) {
+ 
+-    $start = explode(',', $request->query('start'));
++    $startInput = $request->query('start');
++
++    $mode = $request->query('mode', 'driving-car');
++    $allowedModes = ['driving-car', 'cycling-regular', 'foot-hiking'];
++    if (!in_array($mode, $allowedModes)) {
++        $mode = 'driving-car';
++    }
++
++    $coords = getCoordinatesFromORS($startInput);
++
++    if (!$coords) {
++        return response()->json(['error' => 'Invalid start location'], 400);
++    }
++
++    $startLng = $coords['lng'];
++    $startLat = $coords['lat'];
++
+     $distance = floatval($request->query('length'));
+-    $terrain = $request->query('terrain');
+     $loop = filter_var($request->query('loop'), FILTER_VALIDATE_BOOLEAN);
+ 
+-    if(count($start) !== 2){
+-        return response()->json(['error' => 'Invalid start coordinates'], 400);
+-    }
+-
+-    if ($loop == 1)
+-        $distance = $distance/2; // daca e loop atunci jumatate din distanta o sa fie dus intors
+-
+-    $startLng = floatval($start[0]);
+-    $startLat = floatval($start[1]);
++    if ($loop == 1) $distance = $distance/2;
+ 
+     $apiKey = KeyManager::getInstance()->getKey();
+-
+     $maxAttempts = 100;
+     $routeFound = false;
+     $data = null;
+-    $endLng = null;
+-    $endLat = null;
+-    $response = false;
++    $endLng = null; $endLat = null;
+ 
+     for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+-
+-        $unghiGrade = rand(0, 360);//unghi random in care sa mearga ruta
+-        $unghiRad = deg2rad($unghiGrade);//convertim în radiani sa mearga sin cos
+-        $distantaLng= ($distance/78)* sin($unghiRad);//un grad de longitudine e aproximativ 78 km
+-        $distantaLat= ($distance/111)* cos($unghiRad);//un grad de latitudine e aproximativ 111 km
++        $unghiGrade = rand(0, 360);
++        $unghiRad = deg2rad($unghiGrade);
++        $distantaLng= ($distance/78)* sin($unghiRad);
++        $distantaLat= ($distance/111)* cos($unghiRad);
+         $endLng = $startLng + $distantaLng;
+         $endLat = $startLat + $distantaLat;
+-        logger()->info('Attempt ' . ($attempt + 1) . ' | Angle: ' . $unghiGrade . ' degrees | End Coords: ' . $endLng . ',' . $endLat);
++
+         $ch = curl_init();
+-        $httpHeaders = [
+-            "Accept: application/geo+json;charset=UTF-8"
+-        ];
++        $httpHeaders = ["Accept: application/geo+json;charset=UTF-8"];
+         $postData = null;
+ 
+         if ($loop == 0) {
+-            $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
++            $url = "https://api.openrouteservice.org/v2/directions/{$mode}?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
+         } else {
+-            $url = "https://api.openrouteservice.org/v2/directions/driving-car/geojson";
+-            $coordinates = [
+-                [$startLng, $startLat],
+-                [$endLng, $endLat],
+-                [$startLng, $startLat]
+-            ];
+-            //JSON pentru loop
++            $url = "https://api.openrouteservice.org/v2/directions/{$mode}/geojson";
++            $coordinates = [[$startLng, $startLat], [$endLng, $endLat], [$startLng, $startLat]];
+             $postData = json_encode(['coordinates' => $coordinates]);
+             $httpHeaders[] = "Content-Type: application/json";
+             $httpHeaders[] = "Authorization: {$apiKey}";
+@@ -73,136 +165,41 @@
+         }
+         curl_setopt($ch, CURLOPT_HTTPHEADER, $httpHeaders);
+         $response = curl_exec($ch);
+-        if($response === false){
+-            $error = curl_error($ch);
++
++        if($response === false)
++        {
+             curl_close($ch);
+-            return response()->json(['error' => $error], 500, [], JSON_PRETTY_PRINT);
++            continue;
+         }
+         curl_close($ch);
++
+         try {
+             $data = json_decode($response, true);
+-        } catch (\Exception $e) {
++        }
++        catch (\Exception $e)
++        {
+             continue;
+         }
+-        if (isset($data['features']) && !empty($data['features']) &&
+-            isset($data['features'][0]['geometry']['coordinates'])) {
++
++        if (isset($data['features']) && !empty($data['features'])) {
+             $routeFound = true;
+             break;
+         }
+     }
+ 
+-    if (!$routeFound) {
+-        $message = 'Nu s-a putut genera un traseu valid după ' . $maxAttempts . ' încercări. Punctul de start poate fi izolat sau API-ul a returnat o eroare necunoscută.';
+-        $ors_error_details = $data['error'] ?? ['message' => $message];
+-        return response()->json([
+-            'status' => 'ROUTE_SEARCH_FAILED',
+-            'ors_error' => $ors_error_details
+-        ], 404, [], JSON_PRETTY_PRINT);
+-    }
++    if (!$routeFound) { return response()->json(['status' => 'ROUTE_SEARCH_FAILED'], 404); }
+ 
+     $route = $data['features'][0]['geometry']['coordinates'] ?? [];
+     return response()->json([
+         'start' => [$startLng, $startLat],
+         'end'   => [$endLng, $endLat],
+         'route' => $route
+-    ], 200, [], JSON_PRETTY_PRINT);
+-});
+-
+-
+-
+-
+-
+-Route::get('/generate-custom-route', function (Request $request) {
+-    $start = explode(',', $request->query('start'));
+-    $end   = explode(',', $request->query('end'));
+-
+-    if(count($start) !== 2 || count($end) !== 2){
+-        return response()->json(['error' => 'Invalid start or end coordinates'], 400);
+-    }
+-
+-    $startLng = floatval($start[0]);
+-    $startLat = floatval($start[1]);
+-    $endLng   = floatval($end[0]);
+-    $endLat   = floatval($end[1]);
+-
+-    $apiKey = KeyManager::getInstance()->getKey();
+-    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$startLng},{$startLat}&end={$endLng},{$endLat}";
+-    $ch = curl_init();
+-    curl_setopt($ch, CURLOPT_URL, $url);
+-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+-    curl_setopt($ch, CURLOPT_HEADER, false);
+-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+-        "Accept: application/geo+json;charset=UTF-8"
+-    ]);
+-    $response = curl_exec($ch);
+-    if($response === false){
+-        $error = curl_error($ch);
+-        curl_close($ch);
+-        return response()->json(['error' => $error]);
+-    }
+-    curl_close($ch);
+-
+-    $data = json_decode($response, true);
+-    $route = $data['features'][0]['geometry']['coordinates'] ?? [];
+-    return response()->json([
+-        'start' => [$startLat, $startLng],
+-        'end'   => [$endLat, $endLng],
+-        'route' => $route
+-    ], 200, [], JSON_PRETTY_PRINT);
++    ], 200);
+ });
+-
+-
+-
+ 
+ Route::get('/test-key', function() {
+     return response()->json(['api_key' => KeyManager::getInstance()->getKey()]);
+ });
+ 
+-Route::get('/generate-custom-route-verificare', function () {
+-    return response()->json([
+-        'route' => [
+-            ['lat' => 46.7700, 'lng' => 23.5900],
+-            ['lat' => 46.7800, 'lng' => 23.6000],
+-            ['lat' => 46.7900, 'lng' => 23.6100],
+-        ]
+-    ]);
+-});
+-
+-
+-Route::get('/simple-route', function () {
+-    $start = "8.681495,49.41461";
+-    $end   = "8.687872,49.420318";
+-    $apiKey = KeyManager::getInstance()->getKey();
+-
+-    $url = "https://api.openrouteservice.org/v2/directions/driving-car?api_key={$apiKey}&start={$start}&end={$end}";
+-
+-    $ch = curl_init();
+-    curl_setopt($ch, CURLOPT_URL, $url);
+-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+-    curl_setopt($ch, CURLOPT_HEADER, false);
+-
+-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+-        "Accept: application/geo+json;charset=UTF-8"
+-    ]);
+-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+-    $response = curl_exec($ch);
+-    if($response === false){
+-        $error = curl_error($ch);
+-        curl_close($ch);
+-        return response()->json(['error' => $error]);
+-    }
+-    curl_close($ch);
+-    $data = json_decode($response, true);
+-    return response()->json($data, 200, [], JSON_PRETTY_PRINT);
+-});
+-
+-
+-
+-
+ Route::post('/login', [AuthController::class, 'login']);
+ Route::post('/register', [AuthController::class, 'register']);
+-
+-
+-
+-
