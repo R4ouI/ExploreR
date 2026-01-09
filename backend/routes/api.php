@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Http;
 use App\Providers\KeyManager;
+use App\Http\Controllers\SavedRouteController;
 
 
 function getCoordinatesFromORS($locationName) {
@@ -202,4 +203,14 @@ Route::get('/test-key', function() {
 });
 
 Route::post('/login', [AuthController::class, 'login']);
-Route::post('/register', [AuthController::class, 'register']);
+Route::post('/register', [AuthController::class, 'register']);// Public: acces pe share link
+
+Route::get('/routes/{slug}', [SavedRouteController::class, 'show']);
+
+// Protected: salveaza / lista / sterge
+Route::middleware('api.token')->group(function () {
+    Route::post('/routes', [SavedRouteController::class, 'store']);
+    Route::get('/routes', [SavedRouteController::class, 'index']);
+    Route::delete('/routes/{slug}', [SavedRouteController::class, 'destroy']);
+});
+

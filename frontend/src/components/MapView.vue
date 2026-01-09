@@ -40,6 +40,26 @@
 
         <button class="generate-btn" @click="generateCustomRouteFromBackend">Generează Personalizat</button>
       </div>
+      
+      <div v-if="showPanel && selectedRouteType" class="panel form-column">
+        <button class="generate-btn" @click="saveAndShare" :disabled="!lastPayload">
+          Save & Share
+        </button>
+
+        <button class="generate-btn" v-if="shareUrl" @click="copyShareUrl">
+          Copy link
+        </button>
+
+        <a
+          class="generate-btn link-btn"
+          v-if="shareUrl"
+          :href="shareUrl"
+          target="_blank"
+          rel="noopener"
+        >
+          Open share page
+        </a>
+      </div>
     </div>
 
     <div id="map"></div>
@@ -61,6 +81,9 @@ let endMarker = null;
 
 const showPanel = ref(false);
 const selectedRouteType = ref("");
+
+const lastPayload = ref(null);
+const shareUrl = ref("");
 
 const random = ref({
   start: "",
@@ -132,6 +155,17 @@ const generateRandomRouteFromBackend = async () => {
 
     addMarkers(startPoint, endPoint);
 
+     lastPayload.value = {
+      start: startPoint,
+      end: endPoint,
+      mode: random.value.mode,
+      route: route,
+      loop: random.value.loop,
+      length: random.value.length,
+      type: "random",
+    };
+    shareUrl.value = "";
+
   } catch (err) {
     if (err.response && err.response.status === 404) {
       alert("Nu s-a găsit o rută validă. Încearcă alte setări.");
@@ -167,12 +201,43 @@ const generateCustomRouteFromBackend = async () => {
     map.fitBounds(currentPolyline.getBounds());
 
     addMarkers(startPoint, endPoint);
+    lastPayload.value = {
+      start: startPoint,
+      end: endPoint,
+      mode: custom.value.mode,
+      route: route,
+      type: "custom",
+    };
+    shareUrl.value = "";
 
   } catch (err) {
     console.error(err);
     alert("Eroare la generarea traseului Personalizat!");
   }
 };
+async function saveAndShare() {
+  if (!lastPayload.value) {
+    alert("Genereaza mai intai un traseu!");
+    return;
+  }
+
+  try {
+    const res = await api.post("/routes", {
+      payload: lastPayload.value,
+    });
+    shareUrl.value = res.data.share_url;
+  } catch (e) {
+    console.error(e);
+    alert("Eroare la salvare (esti logat?)");
+  }
+}
+
+async function copyShareUrl() {
+  if (!shareUrl.value) return;
+  await navigator.clipboard.writeText(shareUrl.value);
+  alert("Link copiat!");
+}
+
 </script>
 
 <style>
@@ -236,6 +301,14 @@ select.input-btn option {
 .input-btn::placeholder {
   color: white;
   opacity: 1;
+}
+.link-btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;   /* scoate underline */
+  font: inherit;           /* foloseste acelasi font ca butoanele */
+  line-height: normal;
 }
 
 .checkbox-btn {

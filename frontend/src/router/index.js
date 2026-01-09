@@ -3,6 +3,8 @@ import MapView from "../components/MapView.vue";
 import LoginView from "../components/LoginView.vue";
 import TheWelcome from "../components/TheWelcome.vue";
 import SignupView from "../components/SignupView.vue";
+import SharedRouteView from "../components/SharedRouteView.vue";
+import SavedRoutesView from "../components/SavedRoutesView.vue";
 
 
 const router = createRouter({
@@ -17,6 +19,18 @@ const router = createRouter({
     },
     { path: "/login", name: "login", component: LoginView },
     { path: "/signup", name: "signup", component: SignupView },
+    {
+      path: "/share/:slug",
+      name: "share",
+      component: SharedRouteView,
+    },
+    {
+      path: "/saved",
+      name: "saved",
+      component: SavedRoutesView,
+      meta: { requiresAuth: true },
+    },
+
 
   ],
 });

@@ -1,7 +1,14 @@
 import axios from "axios";
 
-// Axios configurat să folosească proxy-ul Vite
-export default axios.create({
-  baseURL: "/api",   // orice cerere aici va fi redirecționată de Vite la backend
-  timeout: 10000,    // timeout 10 secunde
+const api = axios.create({
+  baseURL: "/api",
+  timeout: 10000,
 });
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("authToken");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export default api;

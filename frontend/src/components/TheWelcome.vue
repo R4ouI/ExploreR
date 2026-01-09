@@ -3,7 +3,11 @@ import { computed } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
+const isLoggedIn = computed(() => !!localStorage.getItem("authToken"));
 
+function goSaved() {
+  router.push("/saved");
+}
 // read login state from localStorage
 const user = computed(() => {
   const stored = localStorage.getItem("authUser");
@@ -37,7 +41,15 @@ const logout = () => {
     <!-- Center Big Button -->
     <div class="center-content">
       <h1>ExploreR</h1>
-      <button class="map-btn" @click="goToMap">Go to Map</button>
+      <div class="center-buttons">
+        <button class="map-btn" @click="goToMap">Go to Map</button>
+
+        <button v-if="isLoggedIn" class="map-btn saved-btn" @click="goSaved">
+          Saved Routes
+        </button>
+      </div>
+
+
     </div>
   </div>
 </template>
@@ -105,6 +117,26 @@ const logout = () => {
   color: white;
   cursor: pointer;
   transition: 0.2s;
+}
+.center-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* make "Saved Routes" same size as Go to Map but slightly different style */
+.saved-btn {
+ 
+ 
+  background: transparent;
+  border: 2px solid #00aaff;
+  color: #00aaff;
+}
+
+.saved-btn:hover {
+  transform: scale(1.05);
+  background: rgba(0, 170, 255, 0.15);
 }
 
 .logout-btn:hover {
