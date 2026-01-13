@@ -6,6 +6,10 @@ use App\Http\Controllers\AuthController;
 use Illuminate\Support\Facades\Http;
 use App\Providers\KeyManager;
 use App\Http\Controllers\SavedRouteController;
+use App\Http\Controllers\ShareFeedController;
+use App\Http\Controllers\RouteSocialController;
+
+
 
 
 function getCoordinatesFromORS($locationName) {
@@ -204,13 +208,29 @@ Route::get('/test-key', function() {
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);// Public: acces pe share link
+Route::get('/shares', [ShareFeedController::class, 'index']);
+Route::get('/ping', function () {
+    return response()->json(['ok' => true]);
+});
+
 
 Route::get('/routes/{slug}', [SavedRouteController::class, 'show']);
+Route::get('/routes/{slug}/comments', [RouteSocialController::class, 'listComments']);
+
 
 // Protected: salveaza / lista / sterge
 Route::middleware('api.token')->group(function () {
     Route::post('/routes', [SavedRouteController::class, 'store']);
     Route::get('/routes', [SavedRouteController::class, 'index']);
     Route::delete('/routes/{slug}', [SavedRouteController::class, 'destroy']);
+
 });
+
+Route::middleware('api.token')->post(
+    '/routes/{slug}/comments',
+    [RouteSocialController::class, 'postComment']
+);
+
+Route::middleware('api.token')->post('/routes/{slug}/like', [RouteSocialController::class, 'toggleLike']);
+
 

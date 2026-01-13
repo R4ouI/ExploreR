@@ -30,6 +30,9 @@ const router = createRouter({
       component: SavedRoutesView,
       meta: { requiresAuth: true },
     },
+    { path: "/share", name: "shareHub", component: SharedRouteView },
+    { path: "/share/:slug", name: "share", component: SharedRouteView },
+
 
 
   ],

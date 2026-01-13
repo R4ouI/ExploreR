@@ -227,9 +227,17 @@ async function saveAndShare() {
     });
     shareUrl.value = res.data.share_url;
   } catch (e) {
-    console.error(e);
-    alert("Eroare la salvare (esti logat?)");
+    const status = e?.response?.status;
+    const msg =
+      status === 401 ? "Unauthorized (token lipsa/invalid)." :
+      status === 419 ? "CSRF / session expired." :
+      status === 500 ? "Server error (vezi laravel.log)." :
+      "Eroare necunoscuta.";
+
+    console.error("SAVE ERROR:", status, e?.response?.data || e?.message);
+    alert(msg);
   }
+
 }
 
 async function copyShareUrl() {
@@ -320,4 +328,9 @@ select.input-btn option {
   cursor: pointer;
   text-align: left;
 }
+
+.leaflet-control-zoom {
+  display: none !important;
+}
+
 </style>

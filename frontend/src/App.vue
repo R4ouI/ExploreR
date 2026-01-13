@@ -1,9 +1,12 @@
 <template>
-  <RouterView />
+  <router-view />
+  <BackToWelcome />
 </template>
 
 <script setup>
+import BackToWelcome from "@/components/BackToWelcome.vue";
 </script>
+
 
 <style>
 html, body, #app {

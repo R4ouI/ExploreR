@@ -8,6 +8,10 @@ const isLoggedIn = computed(() => !!localStorage.getItem("authToken"));
 function goSaved() {
   router.push("/saved");
 }
+function goShareHub() {
+  router.push("/share");
+}
+
 // read login state from localStorage
 const user = computed(() => {
   const stored = localStorage.getItem("authUser");
@@ -47,6 +51,10 @@ const logout = () => {
         <button v-if="isLoggedIn" class="map-btn saved-btn" @click="goSaved">
           Saved Routes
         </button>
+        <button class="map-btn" @click="goShareHub">
+          Shared Feed
+        </button>
+
       </div>
 
 
